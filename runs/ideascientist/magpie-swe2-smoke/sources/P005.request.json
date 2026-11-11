@@ -1,0 +1,19 @@
+{
+  "paper_id": "P005",
+  "identity": {
+    "title": "RUDDER: Return Decomposition for Delayed Rewards",
+    "authors": [
+      "Jose A. Arjona-Medina",
+      "Michael Gillhofer",
+      "Michael Widrich",
+      "Thomas Unterthiner",
+      "Johannes Brandstetter",
+      "Sepp Hochreiter"
+    ],
+    "url": "https://arxiv.org/abs/1806.07857v3",
+    "doi": null,
+    "version": "v3",
+    "publication_date": "2019-09-10",
+    "date_basis": "arXiv Atom updated for returned exact version 1806.07857v3"
+  }
+}

@@ -1,0 +1,410 @@
+{
+  "schema_version": 1,
+  "slug": "magpie-swe2-smoke",
+  "problem": "长程信用分配在稀疏奖励下为何失效。",
+  "challenge": "稀疏奖励下长程信用分配为何失效",
+  "language": "Chinese",
+  "cutoff": null,
+  "stage": "report",
+  "status": "complete",
+  "reason": "Report for C001 recorded. Field shape was taken from the saved model text. No further role call.",
+  "axes": [
+    {
+      "axis_id": "A001",
+      "name": "奖励信号稀疏且延迟，导致行为到结果的梯度与价值信号弱、方差高"
+    },
+    {
+      "axis_id": "A002",
+      "name": "长轨迹中自举与价值近似误差累积，信用被错误归因到近期或无关动作"
+    },
+    {
+      "axis_id": "A003",
+      "name": "探索不足与样本复杂度使关键因果事件罕见，难以稳定学习长程依赖"
+    }
+  ],
+  "selected": {
+    "axis_id": "A001",
+    "gap_id": "G007",
+    "candidate_id": "C001"
+  },
+  "next_ids": {
+    "paper": 8,
+    "gap": 13,
+    "candidate": 2,
+    "task": 26
+  },
+  "budgets": {
+    "role_calls": {
+      "limit": 26,
+      "spent": 26
+    },
+    "searches": {
+      "limit": 40,
+      "spent": 25
+    },
+    "reader_calls": {
+      "limit": 18,
+      "spent": 8
+    }
+  },
+  "max_revisions": 2,
+  "max_candidates_per_gap": 3,
+  "blind_baseline": true,
+  "papers": [
+    {
+      "paper_id": "P001",
+      "identity": {
+        "title": "Hindsight Credit Assignment",
+        "authors": [
+          "Anna Harutyunyan",
+          "Will Dabney",
+          "Thomas Mesnard",
+          "Mohammad Azar",
+          "Bilal Piot",
+          "Nicolas Heess",
+          "Hado van Hasselt",
+          "Greg Wayne",
+          "Satinder Singh",
+          "Doina Precup",
+          "Remi Munos"
+        ],
+        "url": "https://arxiv.org/abs/1912.02503v1",
+        "doi": null,
+        "version": "v1",
+        "publication_date": "2019-12-05",
+        "date_basis": "arXiv Atom published for returned exact version 1912.02503v1"
+      }
+    },
+    {
+      "paper_id": "P002",
+      "identity": {
+        "title": "Hindsight-DICE: Stable Credit Assignment for Deep Reinforcement Learning",
+        "authors": [
+          "Akash Velu",
+          "Skanda Vaidyanath",
+          "Dilip Arumugam"
+        ],
+        "url": "https://arxiv.org/abs/2307.11897v2",
+        "doi": null,
+        "version": "v2",
+        "publication_date": "2023-08-18",
+        "date_basis": "arXiv Atom updated for returned exact version 2307.11897v2"
+      }
+    },
+    {
+      "paper_id": "P003",
+      "identity": {
+        "title": "An Information-Theoretic Perspective on Credit Assignment in Reinforcement Learning",
+        "authors": [
+          "Dilip Arumugam",
+          "Peter Henderson",
+          "Pierre-Luc Bacon"
+        ],
+        "url": "https://arxiv.org/abs/2103.06224v1",
+        "doi": null,
+        "version": "v1",
+        "publication_date": "2021-03-10",
+        "date_basis": "arXiv Atom published for returned exact version 2103.06224v1"
+      }
+    },
+    {
+      "paper_id": "P004",
+      "identity": {
+        "title": "Learning credit assignment",
+        "authors": [
+          "Chan Li",
+          "Haiping Huang"
+        ],
+        "url": "https://arxiv.org/abs/2001.03354v2",
+        "doi": "10.1103/PhysRevLett.125.178301",
+        "version": "v2",
+        "publication_date": "2020-10-03",
+        "date_basis": "arXiv Atom updated for returned exact version 2001.03354v2"
+      }
+    },
+    {
+      "paper_id": "P005",
+      "identity": {
+        "title": "RUDDER: Return Decomposition for Delayed Rewards",
+        "authors": [
+          "Jose A. Arjona-Medina",
+          "Michael Gillhofer",
+          "Michael Widrich",
+          "Thomas Unterthiner",
+          "Johannes Brandstetter",
+          "Sepp Hochreiter"
+        ],
+        "url": "https://arxiv.org/abs/1806.07857v3",
+        "doi": null,
+        "version": "v3",
+        "publication_date": "2019-09-10",
+        "date_basis": "arXiv Atom updated for returned exact version 1806.07857v3"
+      }
+    },
+    {
+      "paper_id": "P006",
+      "identity": {
+        "title": "Learning Long-Term Reward Redistribution via Randomized Return Decomposition",
+        "authors": [
+          "Zhizhou Ren",
+          "Ruihan Guo",
+          "Yuan Zhou",
+          "Jian Peng"
+        ],
+        "url": "https://arxiv.org/abs/2111.13485v2",
+        "doi": null,
+        "version": "v2",
+        "publication_date": "2022-03-17",
+        "date_basis": "arXiv Atom updated for returned exact version 2111.13485v2"
+      }
+    },
+    {
+      "paper_id": "P007",
+      "identity": {
+        "title": "Synthetic Returns for Long-Term Credit Assignment",
+        "authors": [
+          "David Raposo",
+          "Sam Ritter",
+          "Adam Santoro",
+          "Greg Wayne",
+          "Theophane Weber",
+          "Matt Botvinick",
+          "Hado van Hasselt",
+          "Francis Song"
+        ],
+        "url": "https://arxiv.org/abs/2102.12425v1",
+        "doi": null,
+        "version": "v1",
+        "publication_date": "2021-02-24",
+        "date_basis": "arXiv Atom published for returned exact version 2102.12425v1"
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "T001",
+      "role": "gap-finder",
+      "target": "Gaps on 奖励信号稀疏且延迟，导致行为到结果的梯度与价值信号弱、方差高.",
+      "output": "gaps/A001.json",
+      "status": "done",
+      "search_allowance": 8,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T002",
+      "role": "paper-reader",
+      "target": "Read P001.",
+      "output": "papers/P001.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 1
+    },
+    {
+      "task_id": "T003",
+      "role": "paper-reader",
+      "target": "Read P002.",
+      "output": "papers/P002.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 1
+    },
+    {
+      "task_id": "T004",
+      "role": "paper-reader",
+      "target": "Read P003.",
+      "output": "papers/P003.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 1
+    },
+    {
+      "task_id": "T005",
+      "role": "paper-reader",
+      "target": "Read P004.",
+      "output": "papers/P004.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 1
+    },
+    {
+      "task_id": "T006",
+      "role": "gap-finder",
+      "target": "Write gaps for 奖励信号稀疏且延迟，导致行为到结果的梯度与价值信号弱、方差高.",
+      "output": "gaps/A001.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T007",
+      "role": "gap-finder",
+      "target": "Gaps on 长轨迹中自举与价值近似误差累积，信用被错误归因到近期或无关动作.",
+      "output": "gaps/A002.json",
+      "status": "done",
+      "search_allowance": 8,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T008",
+      "role": "paper-reader",
+      "target": "Read P005.",
+      "output": "papers/P005.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 1
+    },
+    {
+      "task_id": "T009",
+      "role": "paper-reader",
+      "target": "Read P006.",
+      "output": "papers/P006.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 1
+    },
+    {
+      "task_id": "T010",
+      "role": "paper-reader",
+      "target": "Read P007.",
+      "output": "papers/P007.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 1
+    },
+    {
+      "task_id": "T011",
+      "role": "gap-finder",
+      "target": "Write gaps for 长轨迹中自举与价值近似误差累积，信用被错误归因到近期或无关动作.",
+      "output": "gaps/A002.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T012",
+      "role": "gap-finder",
+      "target": "Gaps on 探索不足与样本复杂度使关键因果事件罕见，难以稳定学习长程依赖.",
+      "output": "gaps/A003.json",
+      "status": "done",
+      "search_allowance": 8,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T013",
+      "role": "gap-finder",
+      "target": "Resubmit gaps for 奖励信号稀疏且延迟，导致行为到结果的梯度与价值信号弱、方差高.",
+      "output": "gaps/A001.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T014",
+      "role": "gap-finder",
+      "target": "Resubmit gaps for 长轨迹中自举与价值近似误差累积，信用被错误归因到近期或无关动作.",
+      "output": "gaps/A002.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T015",
+      "role": "gap-finder",
+      "target": "Resubmit gaps for 探索不足与样本复杂度使关键因果事件罕见，难以稳定学习长程依赖.",
+      "output": "gaps/A003.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T016",
+      "role": "blind-baseline",
+      "target": "Freeze baseline G007.",
+      "output": "baselines/G007.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T017",
+      "role": "innovator",
+      "target": "Candidate C001.",
+      "output": "candidates/C001.json",
+      "status": "done",
+      "search_allowance": 10,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T018",
+      "role": "blind-baseline",
+      "target": "Freeze baseline G007.",
+      "output": "baselines/G007.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T019",
+      "role": "innovator",
+      "target": "Candidate C001.",
+      "output": "candidates/C001.json",
+      "status": "done",
+      "search_allowance": 10,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T020",
+      "role": "innovator",
+      "target": "Resubmit candidate C001.",
+      "output": "candidates/C001.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T021",
+      "role": "reviewer",
+      "target": "Review C001.",
+      "output": "reviews/C001.json",
+      "status": "blocked",
+      "search_allowance": 6,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T022",
+      "role": "reviewer",
+      "target": "Review C001.",
+      "output": "reviews/C001.json",
+      "status": "done",
+      "search_allowance": 6,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T023",
+      "role": "report-writer",
+      "target": "Report C001.",
+      "output": "report.json",
+      "status": "done",
+      "search_allowance": 4,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T024",
+      "role": "report-writer",
+      "target": "Resubmit report C001.",
+      "output": "report.json",
+      "status": "done",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    },
+    {
+      "task_id": "T025",
+      "role": "report-writer",
+      "target": "Resubmit report C001.",
+      "output": "report.json",
+      "status": "blocked",
+      "search_allowance": 0,
+      "reader_allowance": 0
+    }
+  ]
+}

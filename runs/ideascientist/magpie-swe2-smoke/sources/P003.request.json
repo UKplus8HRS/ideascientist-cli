@@ -1,0 +1,16 @@
+{
+  "paper_id": "P003",
+  "identity": {
+    "title": "An Information-Theoretic Perspective on Credit Assignment in Reinforcement Learning",
+    "authors": [
+      "Dilip Arumugam",
+      "Peter Henderson",
+      "Pierre-Luc Bacon"
+    ],
+    "url": "https://arxiv.org/abs/2103.06224v1",
+    "doi": null,
+    "version": "v1",
+    "publication_date": "2021-03-10",
+    "date_basis": "arXiv Atom published for returned exact version 2103.06224v1"
+  }
+}
