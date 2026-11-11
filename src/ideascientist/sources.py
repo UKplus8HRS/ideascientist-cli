@@ -26,8 +26,11 @@ def register_sources(run, sources, cutoff):
     for paper in run.data["papers"]:
         identity = paper["identity"]
         known[(identity.get("doi") or identity.get("url"), identity.get("version"))] = paper["paper_id"]
-    for source in sources:
-        identity = source.get("identity") or {}
+    for source in sources if isinstance(sources, list) else []:
+        if not isinstance(source, dict) or not isinstance(source.get("identity"), dict):
+            rejected.append(source)
+            continue
+        identity = source["identity"]
         if not admit(identity, cutoff):
             rejected.append(source)
             continue

@@ -1,4 +1,4 @@
-"""stdio MCP adapter, shaped like the local codex-exec server."""
+"""stdio MCP adapter (newline-delimited JSON-RPC, MCP protocol 2025-06-18)."""
 
 import json
 import os
@@ -15,14 +15,14 @@ PROTOCOL = "2025-06-18"
 TOOLS = [
     {
         "name": "ideascientist",
-        "description": "Start an IdeaScientist run. The CLI calls Magpie itself and returns when the run completes, blocks, or finds no gap.",
+        "description": "Start an IdeaScientist run. The server calls the configured model endpoint itself and returns when the run completes, blocks, or finds no gap.",
         "inputSchema": {
             "type": "object",
             "properties": {
                 "prompt": {"type": "string", "description": "Research problem."},
                 "cutoff": {"type": "string", "description": "Inclusive YYYY-MM-DD literature cutoff. Omit for live literature."},
                 "slug": {"type": "string"},
-                "model": {"type": "string", "description": "Magpie model id, for example claude/claude-sonnet-5-5."},
+                "model": {"type": "string", "description": "Model id for the configured endpoint. Omit to use `ideascientist setup` / IDEASCIENTIST_MODEL."},
                 "cwd": {"type": "string"},
                 "language": {"type": "string"},
             },

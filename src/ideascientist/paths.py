@@ -4,8 +4,7 @@ import importlib.util
 import sys
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-VENDOR = ROOT / "vendor"
+VENDOR = Path(__file__).resolve().parent / "vendor"
 
 
 def load_vendor(name):

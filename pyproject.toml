@@ -1,10 +1,23 @@
 [project]
 name = "ideascientist"
-version = "0.1.0"
-description = "Standalone IdeaScientist harness. The coordinator is code; the model is reached through Magpie."
+version = "0.2.0"
+description = "Standalone command-line reproduction of the IdeaScientist ideation harness for any OpenAI-compatible model."
+readme = "README.md"
 requires-python = ">=3.10"
 license = { text = "CC-BY-NC-4.0" }
 dependencies = ["pypdf>=5"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Operating System :: OS Independent",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[project.urls]
+Upstream = "https://github.com/jiarui-liu/IdeaScientist"
+Adaptation = "https://github.com/junjiezhou1122/ideascientist-claude-code"
 
 [project.scripts]
 ideascientist = "ideascientist.cli:main"
@@ -15,3 +28,10 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+ideascientist = ["vendor/*.py", "vendor/*.json", "vendor/*.md", "vendor/roles/*.md", "vendor/templates/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src", "tests"]

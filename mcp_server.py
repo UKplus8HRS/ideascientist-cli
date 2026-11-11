@@ -1,4 +1,4 @@
-"""stdio entry point. Claude Code launches this file with the local Python."""
+"""stdio MCP entry point for a source checkout. After `pip install`, use `ideascientist mcp` instead."""
 
 import sys
 from pathlib import Path

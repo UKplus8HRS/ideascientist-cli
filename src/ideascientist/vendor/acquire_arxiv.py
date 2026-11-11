@@ -263,7 +263,7 @@ def acquire(argument):
         os.link(temporary[0], request.pdf, follow_symlinks=False)
         os.link(temporary[1], request.receipt, follow_symlinks=False)
         return receipt
-    except (ValueError, OSError, http.client.HTTPException) as error:
+    except Exception as error:  # noqa: BLE001 - any failure becomes a blocked receipt (adaptation: was ValueError/OSError/HTTPException)
         reason = str(error) if isinstance(error, ValueError) else 'Exact PDF acquisition failed or cache publication was blocked; existing files are preserved.'
         result = {'status': 'blocked', 'reason': reason}
         if request is not None:

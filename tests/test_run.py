@@ -24,6 +24,7 @@ from corpus import (
     baseline,
     candidate,
     digest,
+    discovery,
     evaluation,
     gap,
     happy_steps,
@@ -33,7 +34,7 @@ from corpus import (
     support,
 )
 
-PLUGIN = Path(__file__).resolve().parents[2] / "ideascientist-claude-code"
+PLUGIN = Path(__file__).resolve().parent
 
 
 def run_happy(root):
@@ -51,15 +52,88 @@ def run_happy(root):
 
 
 class RunTests(unittest.TestCase):
+    def test_report_hyperparameter_list_preserves_model_text(self):
+        payload = report()["report"]
+        values = ["Explanation order k", "Coalition sample budget M"]
+        payload["model_details"]["training"]["key_hyperparameters"] = values
+        normalized = _normalize_report(payload)
+        self.assertEqual(list(normalized["model_details"]["training"]["key_hyperparameters"].values()), values)
+
+    def test_report_invalid_evidence_type_is_not_accepted(self):
+        steps = happy_steps()
+        rejected = report()
+        rejected["supports"][0]["kind"] = "definition"
+        steps[-1] = ("report-writer", rejected)
+        result = ideate(
+            "SYNTHETIC offline test problem", cwd=self.root(),
+            provider=ScriptedProvider(steps), source=DictSource({URL: "Synthetic note. The mechanism requires a stable signal."}),
+            cutoff="2020-12-31", slug="invalid-evidence", language="English",
+        )
+        root = Path(result["run_dir"])
+        self.assertEqual(result["status"], "blocked")
+        self.assertFalse((root / "report.json").exists())
+        self.assertEqual(json.loads((root / "report-attempt.json").read_text(encoding="utf-8"))["supports"][0]["kind"], "definition")
+
+    def test_resume_repairs_saved_report_attempt(self):
+        steps = happy_steps()
+        rejected = report()
+        rejected["supports"][0]["locator"] = "wrong locator"
+        steps[-1] = ("report-writer", rejected)
+        result = ideate(
+            "SYNTHETIC offline test problem", cwd=self.root(),
+            provider=ScriptedProvider(steps), source=DictSource({URL: "Synthetic note. The mechanism requires a stable signal."}),
+            cutoff="2020-12-31", slug="report-retry", language="English",
+        )
+        root = Path(result["run_dir"])
+        self.assertEqual(result["status"], "blocked")
+        self.assertEqual(json.loads((root / "report-attempt.json").read_text(encoding="utf-8"))["supports"][0]["locator"], "wrong locator")
+        provider = ScriptedProvider([("report-writer", report())])
+        result = resume(root, "", provider=provider, source=DictSource({}))
+        self.assertEqual(result["status"], "complete", result["content"])
+        packet = json.loads(provider.calls[0]["messages"][1]["content"])
+        self.assertEqual(packet["rejected_supports"][0]["locator"], "wrong locator")
+        self.assertEqual(check_run(root), [])
+
+    def test_review_with_unmatched_support_is_saved_and_repaired(self):
+        steps = happy_steps()
+        index = next(i for i, (role, _) in enumerate(steps) if role == "reviewer")
+        rejected = review()
+        rejected["artifact"]["supports"][0]["locator"] = "wrong locator"
+        steps.insert(index, ("reviewer", rejected))
+        result = ideate(
+            "SYNTHETIC offline test problem", cwd=self.root(),
+            provider=ScriptedProvider(steps), source=DictSource({URL: "Synthetic note. The mechanism requires a stable signal."}),
+            cutoff="2020-12-31", slug="review-repair", language="English",
+        )
+        self.assertEqual(result["status"], "complete", result["content"])
+        self.assertEqual(check_run(result["run_dir"]), [])
+        attempts = list((Path(result["run_dir"]) / "attempts").glob("*.json"))
+        self.assertTrue(any("wrong locator" in p.read_text(encoding="utf-8") for p in attempts))
+
+    def test_innovator_can_discover_sources_before_candidate(self):
+        steps = happy_steps()
+        index = next(i for i, (role, _) in enumerate(steps) if role == "innovator")
+        steps.insert(index, ("innovator", discovery()))
+        result = ideate(
+            "SYNTHETIC offline test problem", cwd=self.root(),
+            provider=ScriptedProvider(steps), source=DictSource({URL: "Synthetic note. The mechanism requires a stable signal."}),
+            cutoff="2020-12-31", slug="innovator-discovery", language="English",
+        )
+        self.assertEqual(result["status"], "complete", result["content"])
+        self.assertEqual(check_run(result["run_dir"]), [])
+        run = RunStore(result["run_dir"])
+        task = next(t for t in run.data["tasks"] if t["role"] == "innovator" and t["output"].startswith("discoveries/"))
+        self.assertEqual(task["status"], "done")
+
     def test_vendored_checker_accepts_plugin_fixture(self):
-        spec = importlib.util.spec_from_file_location("native_fixture", PLUGIN / "tests" / "native_fixture.py")
+        spec = importlib.util.spec_from_file_location("native_fixture", PLUGIN / "native_fixture.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         root = module.create_run(self.fixture_dir())
         self.assertEqual(check_run(root), [])
 
     def test_checker_reads_utf8_on_windows(self):
-        spec = importlib.util.spec_from_file_location("native_fixture_utf8", PLUGIN / "tests" / "native_fixture.py")
+        spec = importlib.util.spec_from_file_location("native_fixture_utf8", PLUGIN / "native_fixture.py")
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         root = module.create_run(self.root() / "utf8")

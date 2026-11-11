@@ -46,6 +46,11 @@ class RunStore:
         return f"{PREFIXES[kind]}{number:03d}"
 
     def begin_task(self, role, target, output, search_allowance, reader_allowance):
+        # Dispatch is sequential. A task still active here was interrupted
+        # (network error, Ctrl-C) and will never finish.
+        for task in self.data["tasks"]:
+            if task["status"] == "active":
+                task["status"] = "blocked"
         task_id = self.alloc("task")
         self.data["tasks"].append({
             "task_id": task_id,

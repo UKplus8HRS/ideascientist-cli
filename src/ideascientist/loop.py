@@ -111,10 +111,17 @@ def evaluate(run_dir, *, provider, on_progress=None):
     }
     action = _specialist(store, provider, "reviewer", packet, tools=[], search_allowance=0, reader_allowance=0, output="evaluation.json", target=f"Evaluate {selected['candidate_id']}.", on_progress=progress)
     if action.get("action") != "submit_artifact":
-        return _block(store, action.get("reason") or "evaluation did not return an artifact")
-    artifact = action["artifact"]
+        _block(store, action.get("reason") or "evaluation did not return an artifact")
+        return _summary(store, [])
+    artifact = action.get("artifact")
+    if not isinstance(artifact, dict):
+        _block(store, "evaluation artifact was not an object")
+        return _summary(store, [])
     artifact["candidate_id"] = selected["candidate_id"]
-    artifact.setdefault("novelty", {})
+    if not isinstance(artifact.get("novelty"), dict):
+        artifact["novelty"] = {"text": artifact["novelty"]} if isinstance(artifact.get("novelty"), str) else {}
+    if not isinstance(artifact.get("nonobviousness"), dict):
+        artifact["nonobviousness"] = {"text": artifact["nonobviousness"]} if isinstance(artifact.get("nonobviousness"), str) else {}
     artifact["novelty"]["scope"] = "cutoff" if store.data["cutoff"] else "live"
     baseline = f"baselines/{selected['gap_id']}.json"
     nonobvious = artifact.setdefault("nonobviousness", {})
@@ -312,9 +319,23 @@ def _accept_gap(store, provider, axis, action, on_progress, *, allow_repair, sel
         return _write_blocked_gap(store, axis, action, "gap artifact was not an object", fatal=allow_repair)
     artifact["axis_id"] = axis["axis_id"]
     artifact["axis"] = axis["name"]
-    for gap, gap_id in zip(artifact.get("gaps") or [], _gap_ids(store, len(artifact.get("gaps") or []))):
-        if isinstance(gap, dict):
-            gap["gap_id"] = gap_id
+    # Keep ids the coordinator already issued (a repair resubmits the same gaps,
+    # and baselines/candidates may already point at them). Allocate only new ones.
+    previous = _read(store.path / "gaps" / f"{axis['axis_id']}.json") or {}
+    ceiling = store.data["next_ids"]["gap"]
+    issued = [
+        g["gap_id"] for g in previous.get("gaps") or []
+        if isinstance(g, dict) and isinstance(g.get("gap_id"), str)
+        and re.fullmatch(r"G\d{3,}", g["gap_id"]) and int(g["gap_id"][1:]) < ceiling
+    ]
+    gaps = [gap for gap in artifact.get("gaps") or [] if isinstance(gap, dict)]
+    kept = {gap.get("gap_id") for gap in gaps if gap.get("gap_id") in issued}
+    spare = [gap_id for gap_id in issued if gap_id not in kept]
+    for gap in gaps:
+        if gap.get("gap_id") in kept:
+            kept.discard(gap["gap_id"])
+        else:
+            gap["gap_id"] = spare.pop(0) if spare else store.alloc("gap")
     if not _bind_supports(store, artifact):
         return _write_blocked_gap(store, axis, action, "gap supports do not match a read digest", fatal=allow_repair)
     errors = _schema_errors("gaps", artifact)
@@ -405,7 +426,8 @@ def _request_baseline(store, provider, gap, candidate_id, rejected, on_progress)
 
 
 def _repair_baseline(store, provider, gap, existing, errors, on_progress):
-    return _request_baseline(store, provider, gap, existing.get("before_candidate"), (existing, errors), on_progress)
+    candidate_id = existing.get("before_candidate") or store.alloc("candidate")
+    return _request_baseline(store, provider, gap, candidate_id, (existing, errors), on_progress)
 
 
 def _store_baseline(store, provider, gap, artifact, candidate_id, on_progress, *, allow_repair):
@@ -470,6 +492,8 @@ def _ensure_candidate(store, provider, source, gap, on_progress):
         reserved = store.alloc("candidate") if not existing else None
     prior = None
     revision = 0
+    if reserved is not None and (store.path / "candidates" / f"{reserved}.json").is_file():
+        reserved = None
     while True:
         candidate_id = reserved or store.alloc("candidate")
         reserved = None
@@ -496,7 +520,11 @@ def _ensure_candidate(store, provider, source, gap, on_progress):
 
 
 def _write_candidate(store, provider, source, gap, candidate_id, prior, revision, on_progress):
-    del source
+    # Finish any registered reads left by an interrupted discovery before asking
+    # the innovator to cite them.
+    for item in _unread_papers(store):
+        if not _read_paper(store, provider, source, item, on_progress):
+            return False
     packet = {
         "language": store.data["language"],
         "cutoff": store.data["cutoff"],
@@ -509,8 +537,24 @@ def _write_candidate(store, provider, source, gap, candidate_id, prior, revision
         "instruction": "submit_artifact for one intuition. Do not write a full proposal. Cite registered papers. Required fields: Intuition, Gap it attacks, Source inspiration, How it maps to this problem, Why it could work / feasibility, Novelty vs. closest in-domain work, Main risk, novelty_type (new-topic, recombination-of-distant-concepts, or reinforcing-a-weak-connection), source_ids, closest_in_domain_ids, search, supports. Each support has paper_id, goal, locator, claim, kind, and answer_text as an empty string. No other fields.",
     }
     action = _as_submission(_specialist(store, provider, "innovator", packet, tools=SEARCH_TOOLS, search_allowance=4 if prior else 10, reader_allowance=0, output=f"candidates/{candidate_id}.json", target=f"Candidate {candidate_id}.", on_progress=on_progress))
-    if action.get("action") != "submit_artifact":
-        return _block(store, action.get("reason") or "innovator did not return a candidate")
+    if action.get("action") == "submit_discovery":
+        task = store.data["tasks"][-1]
+        admitted, rejected = register_sources(store, action.get("sources") or [], store.data["cutoff"])
+        if not admitted:
+            return _block(store, "innovator discovery contained no admissible sources")
+        task["output"] = f"discoveries/{task['task_id']}.json"
+        store.save()
+        _write_discovery(store, action, admitted, role="innovator")
+        for item in admitted:
+            if not _read_paper(store, provider, source, item, on_progress):
+                return False
+        packet["digests"] = [_public_paper(store, paper_id) for paper_id in store.paper_map()]
+        packet["instruction"] += " The discovered papers are now registered and read. Do not search again; submit the candidate artifact using the registered digests."
+        action = _as_submission(_specialist(store, provider, "innovator", packet, tools=[], search_allowance=0, reader_allowance=0, output=f"candidates/{candidate_id}.json", target=f"Candidate {candidate_id} from registered sources.", on_progress=on_progress))
+    if action.get("action") != "submit_artifact" or not isinstance(action.get("artifact"), dict):
+        task_id = store.data["tasks"][-1]["task_id"] if store.data["tasks"] else "unknown"
+        dump(store.path / "attempts" / f"{task_id}.json", {"role": "innovator", "action": action})
+        return _block(store, action.get("reason") or f"innovator did not return a candidate; see attempts/{task_id}.json")
     artifact = action["artifact"]
     artifact.update({
         "candidate_id": candidate_id,
@@ -588,7 +632,7 @@ def _normalize_review(artifact):
     """Keep the model's prose. Checks must be strings, and envelope fields are not part of the schema."""
     if not isinstance(artifact, dict):
         return artifact
-    for key in ("path", "target_id", "consumed_allowances", "next_handoff", "language", "status", "output_path"):
+    for key in ("path", "target_id", "target", "axis_id", "gap_id", "consumed_allowances", "next_handoff", "language", "status", "output_path"):
         artifact.pop(key, None)
     checks = artifact.get("checks")
     if isinstance(checks, dict):
@@ -627,7 +671,7 @@ def _write_review(store, provider, source, candidate_id, on_progress):
         "instruction": "submit_artifact only. verdict is survive, revise, reject, or unverified. focus is null unless verdict is revise; then it is one of novelty, coherence, feasibility, clarity, mapping, grounding. Include reason, strongest_objection, and checks for novelty, coherence, feasibility, clarity, mapping, grounding, and methodological_contribution. survive, revise, and reject need search.status searched. Each support has paper_id, goal, locator, claim, kind, and answer_text as an empty string. No other fields.",
     }
     action = _as_submission(_specialist(store, provider, "reviewer", packet, tools=SEARCH_TOOLS, search_allowance=6, reader_allowance=0, output=f"reviews/{candidate_id}.json", target=f"Review {candidate_id}.", on_progress=on_progress))
-    if action.get("action") != "submit_artifact":
+    if action.get("action") != "submit_artifact" or not isinstance(action.get("artifact"), dict):
         store.finish_task(store.data["tasks"][-1]["task_id"], "blocked")
         _block(store, action.get("reason") or "reviewer did not return a verdict")
         return None
@@ -637,8 +681,30 @@ def _write_review(store, provider, source, candidate_id, on_progress):
     if artifact.get("verdict") != "revise":
         artifact["focus"] = None
     if not _bind_supports(store, artifact):
-        _block(store, "review supports do not match a read digest")
-        return None
+        task_id = store.data["tasks"][-1]["task_id"]
+        dump(store.path / "attempts" / f"{task_id}.json", {"role": "reviewer", "artifact": artifact, "error": "supports do not match a read digest"})
+        store.finish_task(task_id, "blocked")
+        repair = _as_submission(_specialist(
+            store, provider, "reviewer", {
+                "language": store.data["language"], "candidate": candidate,
+                "rejected_artifact": artifact, "answered": _answered_keys(store),
+                "instruction": "Resubmit the same review without adding claims. For each support copy paper_id, goal and locator exactly from answered; remove unsupported claims rather than inventing evidence. " + packet["instruction"],
+            }, tools=[], search_allowance=0, reader_allowance=0,
+            output=f"reviews/{candidate_id}.json", target=f"Repair evidence for review {candidate_id}.", on_progress=on_progress,
+        ))
+        if repair.get("action") != "submit_artifact" or not isinstance(repair.get("artifact"), dict):
+            _block(store, repair.get("reason") or "review evidence repair failed")
+            return None
+        artifact = _normalize_review(repair["artifact"])
+        artifact["candidate_id"] = candidate_id
+        artifact["candidate_snapshot"] = candidate
+        if artifact.get("verdict") != "revise":
+            artifact["focus"] = None
+        if not _bind_supports(store, artifact):
+            task_id = store.data["tasks"][-1]["task_id"]
+            dump(store.path / "attempts" / f"{task_id}.json", {"role": "reviewer", "artifact": artifact, "error": "supports do not match a read digest"})
+            _block(store, "review supports do not match a read digest")
+            return None
     dump(store.path / "reviews" / f"{candidate_id}.json", artifact)
     store.data["stage"] = "review"
     store.data["reason"] = f"Review {candidate_id}: {artifact.get('verdict')}."
@@ -651,14 +717,28 @@ REPORT_FIELDS = """submit_report. Use exactly these report fields and no others:
 
 def _ensure_report(store, provider, source, on_progress):
     existing = _read(store.path / "report.json")
-    if existing and _read(store.path / "report-evidence.json") and not _schema_errors("report", existing):
-        return True
+    evidence = _read(store.path / "report-evidence.json")
     if existing:
+        errors = _schema_errors("report", existing)
+        errors += _schema_errors("report_evidence", evidence) if isinstance(evidence, dict) else ["report evidence is missing"]
+        if not errors:
+            return True
+        if isinstance(evidence, dict):
+            _keep_report_attempt(store, existing, existing, errors, evidence.get("supports") or [])
         if store.data["status"] != "active":
             store.data["status"] = "active"
             store.data["reason"] = "Resubmitting the report in the required fields."
             store.save()
-        return _repair_report(store, provider, existing, _schema_errors("report", existing), on_progress)
+        return _repair_report(store, provider, existing, errors, on_progress)
+    attempt = _read(store.path / "report-attempt.json")
+    if isinstance(attempt, dict) and isinstance(attempt.get("raw_report"), dict):
+        if isinstance(attempt.get("supports"), list):
+            accepted, _ = _accept_report(store, {
+                "action": "submit_report", "report": attempt["raw_report"], "supports": attempt["supports"],
+            })
+            if accepted:
+                return True
+        return _repair_report(store, provider, attempt["raw_report"], attempt.get("schema_errors") or [], on_progress)
     del source
     candidate_id = store.data["selected"]["candidate_id"]
     review = load_json(store.path / "reviews" / f"{candidate_id}.json")
@@ -686,6 +766,7 @@ def _repair_report(store, provider, rejected, errors, on_progress):
     packet = {
         "language": store.data["language"],
         "rejected_report": rejected,
+        "rejected_supports": (_read(store.path / "report-attempt.json") or {}).get("supports", []),
         "schema_errors": errors[:40],
         "answered": _answered_keys(store),
         "instruction": "Resubmit this same report. Do not add claims. " + REPORT_FIELDS,
@@ -730,26 +811,31 @@ def _accept_report(store, action):
     supports = {"supports": action.get("supports") or (embedded if isinstance(embedded, list) else []) or []}
     report = _normalize_report(raw)
     if not _bind_supports(store, supports):
-        _keep_report_attempt(store, raw, report, ["supports do not match a read digest"])
+        _keep_report_attempt(store, raw, report, ["supports do not match a read digest"], supports["supports"])
         _reject_report_task(store)
         return False, "report supports do not match a read digest"
     schema_errors = _schema_errors("report", report)
     if schema_errors:
-        _keep_report_attempt(store, raw, report, schema_errors)
+        _keep_report_attempt(store, raw, report, schema_errors, supports["supports"])
         _reject_report_task(store)
         return False, "Report did not match the schema: " + "; ".join(schema_errors[:8])
-    attempt = store.path / "report-attempt.json"
-    if attempt.is_file():
-        attempt.unlink()
     candidate_id = store.data["selected"]["candidate_id"]
-    dump(store.path / "report.json", report)
     receipt = {
         "candidate_id": candidate_id,
         "supports": supports["supports"],
         "candidate_snapshot": load_json(store.path / "candidates" / f"{candidate_id}.json"),
-        "report_snapshot": load_json(store.path / "report.json"),
+        "report_snapshot": report,
     }
+    evidence_errors = _schema_errors("report_evidence", receipt)
+    if evidence_errors:
+        _keep_report_attempt(store, raw, report, evidence_errors, supports["supports"])
+        _reject_report_task(store)
+        return False, "Report evidence did not match the schema: " + "; ".join(evidence_errors[:8])
+    dump(store.path / "report.json", report)
     dump(store.path / "report-evidence.json", receipt)
+    attempt = store.path / "report-attempt.json"
+    if attempt.is_file():
+        attempt.unlink()
     store.data["stage"] = "report"
     store.data["status"] = "complete"
     store.data["reason"] = f"Report for {candidate_id} recorded."
@@ -765,11 +851,12 @@ def _reject_report_task(store):
         store.finish_task(task["task_id"], "blocked")
 
 
-def _keep_report_attempt(store, raw, normalized, errors):
+def _keep_report_attempt(store, raw, normalized, errors, supports):
     dump(store.path / "report-attempt.json", {
         "schema_errors": errors,
         "raw_report": raw,
         "normalized_report": normalized,
+        "supports": supports,
     })
 
 
@@ -777,7 +864,14 @@ def _normalize_report(report):
     if not isinstance(report, dict):
         return report
     definitions = json.loads((VENDOR / "artifacts.schema.json").read_text(encoding="utf-8"))["$defs"]
-    return _one_citation_per_bracket(_coerce_schema(report, definitions["report"], definitions))
+    normalized = _one_citation_per_bracket(_coerce_schema(report, definitions["report"], definitions))
+    model = normalized.get("model_details")
+    training = model.get("training") if isinstance(model, dict) else None
+    if isinstance(training, dict):
+        parameters = training.get("key_hyperparameters")
+        if isinstance(parameters, list) and all(isinstance(item, str) and item for item in parameters):
+            training["key_hyperparameters"] = {f"item_{index}": item for index, item in enumerate(parameters, 1)}
+    return normalized
 
 
 def _one_citation_per_bracket(value):
@@ -978,7 +1072,7 @@ def _specialist(store, provider, role, packet, *, tools, search_allowance, reade
         completion = provider.complete(role=role, messages=messages, tools=tools)
         upstream = getattr(completion, "upstream", None)
         if upstream and upstream.get("model"):
-            store.log(f"{task_id} served by {upstream.get('provider') or 'magpie'} / {upstream.get('model')}.\n")
+            store.log(f"{task_id} served by {upstream.get('provider') or 'model'} / {upstream.get('model')}.\n")
         if completion.tool_calls:
             action = _tool_action(completion.tool_calls)
             if action:
@@ -986,7 +1080,10 @@ def _specialist(store, provider, role, packet, *, tools, search_allowance, reade
                 return action
             messages.append(_assistant_tools(completion))
             for call in completion.tool_calls:
-                if spent_searches >= search_allowance or not store.reserve("searches"):
+                name = call.get("name")
+                if name not in ("search_arxiv", "resolve_arxiv"):
+                    result = {"error": f"unknown tool {name}"}
+                elif spent_searches >= search_allowance or (name == "search_arxiv" and not store.reserve("searches")):
                     result = {"error": "search budget exhausted"}
                 else:
                     spent_searches += 1
@@ -996,12 +1093,16 @@ def _specialist(store, provider, role, packet, *, tools, search_allowance, reade
         try:
             action = _parse(completion.content)
         except ValueError as exc:
+            messages.append({"role": "assistant", "content": completion.content or ""})
             messages.append({"role": "user", "content": f"Reply with one JSON object. {exc}"})
             continue
         store.finish_task(task_id, "blocked" if action.get("action") == "blocked" else "done")
+        if action.get("action") == "blocked":
+            dump(store.path / "attempts" / f"{task_id}.json", {"role": role, "action": action})
         return action
+    dump(store.path / "attempts" / f"{task_id}.json", {"role": role, "messages": messages[2:]})
     store.finish_task(task_id, "blocked")
-    return {"action": "blocked", "reason": f"{role} did not return an artifact"}
+    return {"action": "blocked", "reason": f"{role} did not return an artifact; see attempts/{task_id}.json"}
 
 
 def _tool_action(calls):
@@ -1056,7 +1157,12 @@ def _bind_supports(store, artifact):
             for answer in digest.get("answers") or []:
                 if answer.get("status") == "answered" and answer.get("answer"):
                     answers[(digest["paper_id"], answer.get("goal"), answer.get("locator"))] = answer["answer"]
-    for support in artifact.get("supports") or []:
+    supports = artifact.get("supports") or []
+    if not isinstance(supports, list):
+        return False
+    for support in supports:
+        if not isinstance(support, dict):
+            return False
         key = (support.get("paper_id"), support.get("goal"), support.get("locator"))
         if key not in answers:
             return False
@@ -1064,16 +1170,15 @@ def _bind_supports(store, artifact):
     return True
 
 
-def _write_discovery(store, action, admitted):
+def _write_discovery(store, action, admitted, *, role="gap-finder"):
     task_id = store.data["tasks"][-1]["task_id"] if store.data["tasks"] else "T000"
-    # The discovery belongs to the task that requested registration. Use the latest done gap-finder task.
     for task in reversed(store.data["tasks"]):
-        if task["role"] == "gap-finder":
+        if task["role"] == role:
             task_id = task["task_id"]
             break
     payload = {
         "task_id": task_id,
-        "role": "gap-finder",
+        "role": role,
         "sources": [{"identity": item["identity"], "goals": item.get("goals") or ["What mechanism does this paper use?"]} for item in admitted],
         "search": action.get("search") or {"queries": ["axis search"], "coverage": "Registered cutoff-valid arXiv identities.", "status": "searched", "block_reason": None},
     }
@@ -1108,8 +1213,6 @@ def _write_blocked_gap(store, axis, action, reason, *, fatal=True):
     return "blocked"
 
 
-def _gap_ids(store, count):
-    return [store.alloc("gap") for _ in range(count)]
 
 
 def _grounded_gap(store):
@@ -1142,7 +1245,15 @@ def _existing_review(store):
     candidate_id = store.data["selected"].get("candidate_id")
     if not candidate_id:
         return None
-    return _read(store.path / "reviews" / f"{candidate_id}.json")
+    path = store.path / "reviews" / f"{candidate_id}.json"
+    review = _read(path)
+    if not isinstance(review, dict):
+        return None
+    normalized = _normalize_review(dict(review))
+    if normalized != review and not _schema_errors("review", normalized):
+        dump(path, normalized)
+        return normalized
+    return review
 
 
 def _public_paper(store, paper_id):
@@ -1204,6 +1315,11 @@ def _finish(store, on_progress):
 
 
 def _block(store, reason):
+    # A specialist may have been marked done before its output failed validation.
+    # A done task must own a file, so demote it rather than leave a broken run.
+    for task in store.data["tasks"]:
+        if task["status"] in ("done", "active") and not (store.path / task["output"]).is_file():
+            task["status"] = "blocked"
     store.data["status"] = "blocked"
     store.data["reason"] = reason[:500]
     store.save()
